@@ -1,4 +1,4 @@
-# PWSH.Kaspa
+# PWSH.Kaspa example scripts
 Repository contains example scripts that are using Kaspa Powershell integration [@KaspaForPowershell](https://www.youtube.com/@KaspaForPowershell) written in C#.
 
 ## DONATION ♥
