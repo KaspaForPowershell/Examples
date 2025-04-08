@@ -64,7 +64,7 @@ param
     [Parameter(Mandatory=$true)]
     [string] $InitialAddress,
 
-    [ValidateRange(50, [uint]::MaxValue)]
+    [ValidateRange(50, 500)]
     [Parameter(Mandatory=$false)]
     [uint] $TransactionLimit = 500,
     
