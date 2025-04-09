@@ -49,10 +49,6 @@ param
     [Parameter(Mandatory=$true)]
     [string] $Address,
 
-    [ValidateRange(50, 500)]
-    [Parameter(Mandatory=$false)]
-    [uint] $TransactionLimit = 500,
-
     [Parameter(Mandatory=$false)]
     [switch] $FullTransactions,
 
@@ -67,138 +63,45 @@ DEFAULTS                                                           |
 # Clear console if the CleanConsole switch is provided.
 if ($CleanConsole.IsPresent) { Clear-Host }
 
-# Prepare fields property.
-$queryFields = ""
-if (-not $FullTransactions.IsPresent) { $queryFields = "subnetwork_id,block_time,transaction_id" }
-
-<# -----------------------------------------------------------------
-HELPERS                                                            |
------------------------------------------------------------------ #>
-
-function Start-TransactionRetrievalJob 
-{
-    <#
-    .SYNOPSIS
-        Creates and starts a background job to retrieve transactions for a Kaspa address.
-    
-    .DESCRIPTION
-        This function determines the appropriate method to retrieve transactions based on
-        the total number of transactions for the address. For addresses with 500 or fewer
-        transactions, it uses Get-FullTransactionsForAddress. For addresses with more
-        transactions, it uses Get-FullTransactionsForAddressPage with the specified limit.
-    
-    .PARAMETER Address
-        The Kaspa address to retrieve transactions for.
-    
-    .PARAMETER TransactionLimit
-        The maximum number of transactions to retrieve in a single request.
-    
-    .OUTPUTS
-        Returns a background job object if transactions are found, or $null if no
-        transactions are found for the address.
-    #>
-
-    param 
-    (
-        [Parameter(Mandatory=$true)]
-        [string] $Address,
-
-        [Parameter(Mandatory=$true)]
-        [uint] $TransactionLimit,
-
-        [AllowEmptyString()]
-        [Parameter(Mandatory=$true)]
-        [string] $QueryFields
-    )
-
-    Write-Host ("Checking transactions for address: {0}" -f $Address) -ForegroundColor Cyan
-
-    $transactionsCount = Get-TransactionsCountForAddress -Address $Address
-    if ($transactionsCount.Total -gt 0) { Write-Host "  Found transactions for this address" -ForegroundColor DarkYellow }
-    else 
-    {
-        Write-Host "  No transactions found for this address" -ForegroundColor DarkYellow
-        return $null
-    }
-
-    if ($transactionsCount.Total -le 500) 
-    { 
-        Write-Host "  Created transaction retrieval job using Get-FullTransactionsForAddress" -ForegroundColor Gray
-        return Get-FullTransactionsForAddress -Address $Address -Limit 500 -Fields $QueryFields -ResolvePreviousOutpoints Light -AsJob
-    } 
-    else 
-    { 
-        Write-Host ("  Created transaction retrieval job using Get-FullTransactionsForAddressPage with limit {0}" -f $TransactionLimit) -ForegroundColor Gray
-        return Get-FullTransactionsForAddressPage -Address $Address -Limit $TransactionLimit -Fields $QueryFields -Timestamp 0 -BeforeTimestamp -ResolvePreviousOutpoints Light -AsJob
-    }
-}
-
 <# -----------------------------------------------------------------
 MAIN                                                               |
 ----------------------------------------------------------------- #>
 
-$job = Start-TransactionRetrievalJob -Address:$Address -TransactionLimit:$TransactionLimit -QueryFields:$QueryFields
-if ($null -eq $job) 
+if (-not $FullTransactions.IsPresent) { $result = ./download-transaction-history.ps1 -Address $Address -Fields "subnetwork_id,block_time,transaction_id" }
+else { $result = ./download-transaction-history.ps1 -Address $Address }
+
+if ($result.TransactionsCount -le 0)
 {
-    Write-Host "No job was created. Exiting." -ForegroundColor Red
+    Write-Host "No transactions found. Exiting." -ForegroundColor Red
     return
 }
 
-$waitCounter = 0
+Write-Host "  Processing $($result.TransactionsCount) transactions..." -ForegroundColor Cyan
 
-while ($true)
-{   
-    $currState = $job.State
+$minerTxs = @()
+$otherTxs = @()
 
-    if ($currState -eq "Completed")
-    {
-        Write-Host ("  Transaction retrieval job for address {0} completed" -f $Address) -ForegroundColor Green
-        $transactions = Receive-Job -Job $job
-        Remove-Job -Job $job
-        
-        if ($transactions.Count -le 0) { return }
+foreach($tx in $result.Transactions)
+{
+    if ($tx.SubnetworkID -eq "0100000000000000000000000000000000000000") { $minerTxs += $tx } # This is mining subnetwork https://github.com/kaspa-ng/kaspa-rest-server/pull/63/files
+    else { $otherTxs += $tx }
+}
 
-        $minerTxs = @()
-        $otherTxs = @()
+Write-Host ("  Found {0} mining transactions and {1} other transactions" -f $minerTxs.Count, $otherTxs.Count)-ForegroundColor Cyan
 
-        Write-Host "  Processing $($transactions.Count) transactions..." -ForegroundColor Cyan
-        foreach ($tx in $transactions)
-        {
-            if ($tx.SubnetworkID -eq "0100000000000000000000000000000000000000") { $minerTxs += $tx } # This is mining subnetwork https://github.com/kaspa-ng/kaspa-rest-server/pull/63/files
-            else { $otherTxs += $tx }
-        }
+$oldestTimestamp = ($result.Transactions | Sort-Object -Property BlockTime | Select-Object -First 1).BlockTime
+$oldestDate = ConvertFrom-Timestamp -Timestamp $oldestTimestamp
+Write-Host ("  Oldest transaction: {0} ({1})" -f $oldestDate.LocalDateTime, $oldestTimestamp) -ForegroundColor DarkCyan
 
-        Write-Host ("  Found {0} mining transactions and {1} other transactions" -f $minerTxs.Count, $otherTxs.Count)-ForegroundColor Cyan
+$newestTimestamp = ($result.Transactions | Sort-Object -Property BlockTime | Select-Object -Last 1).BlockTime
+$newestDate = ConvertFrom-Timestamp -Timestamp $newestTimestamp
+Write-Host ("  Newest transaction: {0} ({1})" -f $newestDate.LocalDateTime, $newestTimestamp) -ForegroundColor DarkCyan
 
-        $oldestTimestamp = ($transactions | Sort-Object -Property BlockTime | Select-Object -First 1).BlockTime
-        $oldestDate = ConvertFrom-Timestamp -Timestamp $oldestTimestamp
-        Write-Host ("  Oldest transaction: {0} ({1})" -f $oldestDate.LocalDateTime, $oldestTimestamp) -ForegroundColor DarkCyan
+<# -----------------------------------------------------------------
+OUTPUT                                                             |
+----------------------------------------------------------------- #>
 
-        $newestTimestamp = ($transactions | Sort-Object -Property BlockTime | Select-Object -Last 1).BlockTime
-        $newestDate = ConvertFrom-Timestamp -Timestamp $newestTimestamp
-        Write-Host ("  Newest transaction: {0} ({1})" -f $newestDate.LocalDateTime, $newestTimestamp) -ForegroundColor DarkCyan
-        
-        # Return both categories as a grouped object.
-        return [PSCustomObject]@{
-            MinerTransactions  = $minerTxs
-            OtherTransactions = $otherTxs
-        }
-    }
-    elseif ($currState -eq "Failed")
-    {
-        Write-Host ("  Transaction retrieval job for address {0} failed" -f $Address) -ForegroundColor Red
-        Remove-Job -Job $job
-        break
-    }
-    else 
-    { 
-        # If we have job running, then wait a bit for job to complete.
-        $waitCounter++
-        $dots = "." * ($waitCounter % 4)
-        Write-Host ("Waiting for transaction retrieval job to complete{0}" -f $dots.PadRight(3)) -ForegroundColor DarkCyan -NoNewline
-        Write-Host "`r" -NoNewline
-
-        Start-Sleep -Seconds 1
-        continue
-    }
+return [PSCustomObject]@{
+    MinerTransactions  = $minerTxs
+    OtherTransactions = $otherTxs
 }
