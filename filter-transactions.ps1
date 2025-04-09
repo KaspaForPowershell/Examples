@@ -1,46 +1,41 @@
 <#
-.SYNOPSIS
-    Retrieves and categorizes transactions for a specified Kaspa address.
+    .SYNOPSIS
+        Retrieves and categorizes transactions for a specified Kaspa address.
 
-.DESCRIPTION
-    This script connects to the Kaspa network and retrieves transactions for a given address.
-    Transactions are categorized into mining transactions and regular transactions.
-    The script handles pagination for addresses with large transaction histories and 
-    provides information about the oldest and newest transactions.
+    .DESCRIPTION
+        This script connects to the Kaspa network and retrieves transactions for a given address.
+        Transactions are categorized into mining transactions and regular transactions.
+        The script handles pagination for addresses with large transaction histories and 
+        provides information about the oldest and newest transactions.
 
-.PARAMETER Address
-    The Kaspa address to retrieve transactions for. This parameter is validated to ensure
-    it conforms to the Kaspa address format.
+    .PARAMETER Address
+        The Kaspa address to retrieve transactions for. This parameter is validated to ensure
+        it conforms to the Kaspa address format.
 
-.PARAMETER TransactionLimit
-    The maximum number of transactions to retrieve in a single request. 
-    Must be at least 50. Default is 500.
-    
-.PARAMETER CleanConsole
-    If specified, clears the console before running the script.
+    .PARAMETER FullTransactions
+        If specified, retrieves the full transaction objects from the API. 
+        If omitted, a lightweight transaction view is used (only subnetwork ID, block time, and transaction ID).
+        
+    .PARAMETER CleanConsole
+        If specified, clears the console before running the script.
 
-.EXAMPLE
-    PS> .\filter-transactions.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r"
-    
-    Retrieves transactions for the specified address using the default transaction limit.
+    .EXAMPLE
+        PS> .\filter-transactions.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r" -FullTransactions
+        
+        Retrieves transactions for the specified address with all fields included.
 
-.EXAMPLE
-    PS> .\filter-transactions.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r" -TransactionLimit 100
-    
-    Retrieves up to 100 transactions for the specified address.
+    .EXAMPLE
+        PS> .\filter-transactions.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r" -CleanConsole
+        
+        Clears the console before retrieving transactions for the specified address.
 
-.EXAMPLE
-    PS> .\filter-transactions.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r" -CleanConsole
-    
-    Clears the console before retrieving transactions for the specified address.
+    .OUTPUTS
+        Returns a custom object containing two properties:
+        - MinerTransactions: An array of transactions related to mining activities
+        - OtherTransactions: An array of all other transactions
 
-.OUTPUTS
-    Returns a custom object containing two properties:
-    - MinerTransactions: An array of transactions related to mining activities
-    - OtherTransactions: An array of all other transactions
-
-.NOTES
-    Requires the PWSH.Kaspa module to be installed and imported.
+    .NOTES
+        Requires the PWSH.Kaspa module to be installed and imported.
 #>
 
 param 
@@ -67,6 +62,8 @@ if ($CleanConsole.IsPresent) { Clear-Host }
 MAIN                                                               |
 ----------------------------------------------------------------- #>
 
+# We are using another script here, since we already handled similar scenario in it already.
+# This simplifies development and showcases how you can write smaller scripts and than reuse them to accomplish bigger and more complicated tasks.
 if (-not $FullTransactions.IsPresent) { $result = ./download-transaction-history.ps1 -Address $Address -Fields "subnetwork_id,block_time,transaction_id" }
 else { $result = ./download-transaction-history.ps1 -Address $Address }
 
