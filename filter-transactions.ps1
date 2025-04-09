@@ -86,11 +86,14 @@ foreach($tx in $result.Transactions)
 
 Write-Host ("  Found {0} mining transactions and {1} other transactions" -f $minerTxs.Count, $otherTxs.Count)-ForegroundColor Cyan
 
-$oldestTimestamp = ($result.Transactions | Sort-Object -Property BlockTime | Select-Object -First 1).BlockTime
+# Print some additional information about oldest and newest transaction date.
+$sorted = $result.Transactions | Sort-Object -Property BlockTime
+
+$oldestTimestamp = ($sorted | Select-Object -First 1).BlockTime
 $oldestDate = ConvertFrom-Timestamp -Timestamp $oldestTimestamp
 Write-Host ("  Oldest transaction: {0} ({1})" -f $oldestDate.LocalDateTime, $oldestTimestamp) -ForegroundColor DarkCyan
 
-$newestTimestamp = ($result.Transactions | Sort-Object -Property BlockTime | Select-Object -Last 1).BlockTime
+$newestTimestamp = ($sorted | Select-Object -Last 1).BlockTime
 $newestDate = ConvertFrom-Timestamp -Timestamp $newestTimestamp
 Write-Host ("  Newest transaction: {0} ({1})" -f $newestDate.LocalDateTime, $newestTimestamp) -ForegroundColor DarkCyan
 
