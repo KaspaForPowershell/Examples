@@ -20,17 +20,17 @@
     If specified, clears the console before running the script.
 
 .EXAMPLE
-    PS> .\filter-transactions.ps1 -Address "kaspa:qz0atyd994hyt5cqyhjkun4s5efs5c807a9j4vj80xu2kmwx8jlxzwjte4k27"
+    PS> .\filter-transactions.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r"
     
     Retrieves transactions for the specified address using the default transaction limit.
 
 .EXAMPLE
-    PS> .\filter-transactions.ps1 -Address "kaspa:qz0atyd994hyt5cqyhjkun4s5efs5c807a9j4vj80xu2kmwx8jlxzwjte4k27" -TransactionLimit 100
+    PS> .\filter-transactions.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r" -TransactionLimit 100
     
     Retrieves up to 100 transactions for the specified address.
 
 .EXAMPLE
-    PS> .\filter-transactions.ps1 -Address "kaspa:qz0atyd994hyt5cqyhjkun4s5efs5c807a9j4vj80xu2kmwx8jlxzwjte4k27" -CleanConsole
+    PS> .\filter-transactions.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r" -CleanConsole
     
     Clears the console before retrieving transactions for the specified address.
 

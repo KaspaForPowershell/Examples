@@ -40,8 +40,8 @@
 param
 (
     [PWSH.Kaspa.Base.Attributes.ValidateKaspaAddress()]
-    [Parameter(Mandatory=$false)]
-    [string] $Address = "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r",
+    [Parameter(Mandatory=$true)]
+    [string] $Address,
 
     [ValidateRange(1, [uint]::MaxValue)]
     [Parameter(Mandatory=$false)]
