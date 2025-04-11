@@ -67,7 +67,7 @@ MAIN                                                               |
 if (-not $FullTransactions.IsPresent) { $result = ./download-transaction-history.ps1 -Address $Address -Fields "subnetwork_id,block_time,transaction_id" }
 else { $result = ./download-transaction-history.ps1 -Address $Address }
 
-if ($result.TransactionsCount -le 0)
+if (($null -eq $result) -or ($result.TransactionsCount -eq 0))
 {
     Write-Host "No transactions found. Exiting." -ForegroundColor Red
     return

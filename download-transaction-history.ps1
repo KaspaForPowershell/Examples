@@ -21,6 +21,9 @@
         Specific fields to retrieve for each transaction. Leave empty for all fields.
         Default: "" (empty string, returns all fields)
 
+    .PARAMETER ResolvePreviousOutpoints
+        TODO: Add some explamnation.
+
     .PARAMETER CleanConsole
         If specified, clears the console before execution.
 
@@ -52,6 +55,9 @@ param
     [string] $Fields = "",
 
     [Parameter(Mandatory=$false)]
+    [PWSH.Kaspa.Base.KaspaResolvePreviousOutpointsOption] $ResolvePreviousOutpoints = [PWSH.Kaspa.Base.KaspaResolvePreviousOutpointsOption]::Light,
+
+    [Parameter(Mandatory=$false)]
     [switch] $CleanConsole
 )
 
@@ -62,82 +68,76 @@ DEFAULTS                                                           |
 # Clear console if the CleanConsole switch is provided.
 if ($CleanConsole.IsPresent) { Clear-Host }
 
-# Maximum transactions per job.
+# Maximum transactions per job. It's API limit.
 $batchSize = 500
 
 <# -----------------------------------------------------------------
 MAIN                                                               |
 ----------------------------------------------------------------- #>
 
-$allResults = @()
-
+# If there are no transactions, then we have nothing to do here.
 $transactionsCount = Get-TransactionsCountForAddress -Address $Address
-if ($transactionsCount.Total -gt 0) 
+if (-not($transactionsCount.Total -gt 0)) { return $null }
+
+Write-Host "Starting parallel transaction retrieval mode with $($ConcurrencyLimit) concurrent job(s)..." -ForegroundColor Cyan
+
+$allResults = @()
+$page = 0
+$shouldContinue = $true
+
+while ($shouldContinue)
 {
-    $page = 0
-    $shouldContinue = $true
+    Write-Host "`nStarting batch at page $($page)..." -ForegroundColor Magenta
 
-    $taskCountLimit = $ConcurrencyLimit - 1
-    if ($transactionsCount.Total -le 500) 
-    { 
-        $taskCountLimit = 0 
-        Write-Host "Transaction count <= 500, using single job mode." -ForegroundColor Yellow
-    }
-
-    Write-Host "Starting parallel transaction retrieval with $($taskCountLimit + 1) concurrent job(s)..." -ForegroundColor Cyan
-
-    while ($shouldContinue)
+    $tasks = @()
+    for ($i = 0; $i -lt $ConcurrencyLimit; $i++) 
     {
-        Write-Host "`nStarting batch at page $($page)..." -ForegroundColor Magenta
+        $currentOffset = ($page + $i) * $batchSize
+        Write-Host "  Starting job for transactions $($currentOffset) to $($currentOffset + $batchSize - 1)..." -ForegroundColor Blue
 
-        $tasks = 0..($taskCountLimit) | ForEach-Object {
-            $i = $_
-            $currentOffset = ($page + $i) * $batchSize
-            Write-Host "  Starting job for transactions $($currentOffset) to $($currentOffset + $batchSize - 1)..." -ForegroundColor Blue
+        $job = if ($Fields -eq [string]::Empty) { Get-FullTransactionsForAddress -Address $Address -Limit $batchSize -ResolvePreviousOutpoints $ResolvePreviousOutpoints -Offset $currentOffset -AsJob }
+        else { Get-FullTransactionsForAddress -Address $Address -Limit $batchSize -ResolvePreviousOutpoints $ResolvePreviousOutpoints -Offset $currentOffset -Fields $Fields -AsJob }
 
-            if ($Fields -eq [string]::Empty) { Get-FullTransactionsForAddress -Address $Address -Limit $batchSize -ResolvePreviousOutpoints Light -Offset:$currentOffset -AsJob }
-            else { Get-FullTransactionsForAddress -Address $Address -Limit $batchSize -ResolvePreviousOutpoints Light -Offset:$currentOffset -Fields:$Fields -AsJob }
-        }
-
-        Write-Host "Waiting for $($tasks.Count) job(s) to complete..." -ForegroundColor Cyan
-        $null = $tasks | Wait-Job
-
-        $currentPage = $page
-        foreach ($job in $tasks) 
-        {
-            if ($job.State -eq 'Failed') 
-            { 
-                Write-Warning "Job $($job.Id) failed: $($job.Error)" 
-                # Write-Warning "Job $($job.Id) failed: $($job.ChildJobs[0].JobStateInfo.Reason.Message)"
-                Remove-Job -Id $job.Id -Force
-                continue
-            }
-
-            Write-Host "Processing results from job ID $($job.Id) (page $($currentPage))..." -ForegroundColor Blue
-            $pageResult = Receive-Job -Job $job
-            Remove-Job -Job $job -Force
-
-            if ($null -ne $pageResult) 
-            {
-                Write-Host "  Retrieved $($pageResult.Count) transactions" -ForegroundColor Green
-                $allResults += $pageResult
-        
-                if ($pageResult.Count -lt $batchSize) 
-                {
-                    Write-Host "  Less than $($batchSize) transactions returned. Assuming end of data." -ForegroundColor Yellow
-                    $shouldContinue = $false
-                    break
-                }
-            }
-
-            $currentPage++
-        }
-
-        $page = $page + $ConcurrencyLimit;
-
-        # Delay to prevent overwhelming the server.
-        Start-Sleep -Seconds 1
+        $tasks += $job
     }
+
+    Write-Host "Waiting for $($tasks.Count) job(s) to complete..." -ForegroundColor Cyan
+    $null = $tasks | Wait-Job
+
+    $currentPage = $page
+    foreach ($job in $tasks) 
+    {
+        if ($job.State -eq 'Failed') 
+        { 
+            Write-Warning "Job $($job.Id) failed: $($job.Error)"
+            Remove-Job -Id $job.Id -Force
+            continue
+        }
+
+        Write-Host "Processing results from job ID $($job.Id) (page $($currentPage))..." -ForegroundColor Blue
+        $pageResult = Receive-Job -Job $job
+        Remove-Job -Job $job -Force
+
+        if ($null -ne $pageResult) 
+        {
+            Write-Host "  Retrieved $($pageResult.Count) transactions" -ForegroundColor Green
+            $allResults += $pageResult
+    
+            if ($pageResult.Count -lt $batchSize) 
+            {
+                Write-Host "  Less than $($batchSize) transactions returned. Assuming end of data." -ForegroundColor Yellow
+                $shouldContinue = $false
+                break
+            }
+        }
+
+        $currentPage++
+    }
+
+    $page = $page + $ConcurrencyLimit;
+
+    # Delay to prevent overwhelming the server.
+    Start-Sleep -Seconds 1
 }
 
 <# -----------------------------------------------------------------
