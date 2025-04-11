@@ -64,8 +64,8 @@ MAIN                                                               |
 
 # We are using another script here, since we already handled similar scenario in it already.
 # This simplifies development and showcases how you can write smaller scripts and than reuse them to accomplish bigger and more complicated tasks.
-if (-not $FullTransactions.IsPresent) { $result = ./download-transaction-history.ps1 -Address $Address -Fields "subnetwork_id,block_time,transaction_id" }
-else { $result = ./download-transaction-history.ps1 -Address $Address }
+$result = if (-not $FullTransactions.IsPresent) { ./download-transaction-history.ps1 -Address $Address -ResolvePreviousOutpoints No -Fields "subnetwork_id,block_time,transaction_id" }
+else { ./download-transaction-history.ps1 -Address $Address -ResolvePreviousOutpoints No }
 
 if (($null -eq $result) -or ($result.TransactionsCount -eq 0))
 {

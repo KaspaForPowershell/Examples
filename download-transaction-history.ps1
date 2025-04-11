@@ -16,13 +16,19 @@
         The maximum number of concurrent API requests to make.
         Range: 1 to maximum unsigned integer value.
         Default: 5
+        
+        Higher values may improve performance but could potentially overload the API service.
 
     .PARAMETER Fields
         Specific fields to retrieve for each transaction. Leave empty for all fields.
         Default: "" (empty string, returns all fields)
 
     .PARAMETER ResolvePreviousOutpoints
-        TODO: Add some explamnation.
+        Values: No, Light, Full
+        Default: Light
+        - No: No resolution of previous outpoints
+        - Light: Basic resolution with minimal transaction details
+        - Full: Complete resolution with all transaction details for previous outpoints
 
     .PARAMETER CleanConsole
         If specified, clears the console before execution.
@@ -38,6 +44,14 @@
     .EXAMPLE
         PS> .\download-transaction-history.ps1 -Address "kaspa:qqscm7geuuc26ffneeyslsfcytg0vzf9848slkxchzdkgx3mn5mdx4dcavk2r" -Fields "subnetwork_id,transaction_id,block_time"
         Retrieves only specific fields (subnetwork_id, transaction_id, block_time) for all transactions.
+
+    .NOTES
+        Returns a custom object containing:
+        - TransactionsCount: Total number of transactions retrieved
+        - Transactions: Array of transaction objects
+        - FailedOffsets: List of any offsets that failed during retrieval
+
+        The script uses PowerShell jobs for parallel processing to improve performance.
 #>
 
 param
@@ -55,7 +69,7 @@ param
     [string] $Fields = "",
 
     [Parameter(Mandatory=$false)]
-    [PWSH.Kaspa.Base.KaspaResolvePreviousOutpointsOption] $ResolvePreviousOutpoints = [PWSH.Kaspa.Base.KaspaResolvePreviousOutpointsOption]::Light,
+    [PWSH.Kaspa.Base.KaspaResolvePreviousOutpointsOption] $ResolvePreviousOutpoints = [PWSH.Kaspa.Base.KaspaResolvePreviousOutpointsOption]::No,
 
     [Parameter(Mandatory=$false)]
     [switch] $CleanConsole
@@ -82,6 +96,7 @@ if (-not($transactionsCount.Total -gt 0)) { return $null }
 Write-Host "Starting parallel transaction retrieval mode with $($ConcurrencyLimit) concurrent job(s)..." -ForegroundColor Cyan
 
 $allResults = @()
+$failedOffsets = @()
 $page = 0
 $shouldContinue = $true
 
@@ -90,6 +105,8 @@ while ($shouldContinue)
     Write-Host "`nStarting batch at page $($page)..." -ForegroundColor Magenta
 
     $tasks = @()
+    $offsets = @{}
+
     for ($i = 0; $i -lt $ConcurrencyLimit; $i++) 
     {
         $currentOffset = ($page + $i) * $batchSize
@@ -99,6 +116,7 @@ while ($shouldContinue)
         else { Get-FullTransactionsForAddress -Address $Address -Limit $batchSize -ResolvePreviousOutpoints $ResolvePreviousOutpoints -Offset $currentOffset -Fields $Fields -AsJob }
 
         $tasks += $job
+        $offsets[$job.Id] = $currentOffset
     }
 
     Write-Host "Waiting for $($tasks.Count) job(s) to complete..." -ForegroundColor Cyan
@@ -110,6 +128,7 @@ while ($shouldContinue)
         if ($job.State -eq 'Failed') 
         { 
             Write-Warning "Job $($job.Id) failed: $($job.Error)"
+            $failedOffsets += $offsets[$job.Id]
             Remove-Job -Id $job.Id -Force
             continue
         }
@@ -147,4 +166,5 @@ OUTPUT                                                             |
 return [PSCustomObject]@{
     TransactionsCount = $allResults.Count
     Transactions = $allResults
+    FailedOffsets = $failedOffsets
 }
